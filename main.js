@@ -1,13 +1,10 @@
-
+// const fs = require('fs').promises;
 const express = require('express');
 const { existsSync } = require('fs');
+const fs = require('fs');
 const mysql = require('mysql');
 const path = require('path');
 const cron = require('node-cron');
-const exec = require('child_process').exec;
-const fs = require('fs');
-
-
 
 const app = express();
 const port = 3000;
@@ -21,13 +18,24 @@ const dbConfig = {
 
 const pool = mysql.createPool(dbConfig);
 
-if (!existsSync(path.join(__dirname, 'datas'))) {
-  fs.mkdir(path.join(__dirname, 'datas'));
-} else {
-  console.log("Folder already in this project!")
+async function createDataDirectory() {
+  if (!existsSync(path.join(__dirname, 'datas'))) {
+    try {
+      await fs.mkdir(path.join(__dirname, 'datas'));
+      console.log("Folder has been created in this project!");
+    } catch (err) {
+      console.error('Error creating the directory:', err);
+    }
+  } else {
+    console.log("Folder already in this project!");
+  }
 }
 
-var patients = cron.schedule("0 */10 * * * *", function () {
+
+createDataDirectory();
+
+
+var patients = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id, branch_id, first_name, last_name, gender FROM patients', (err, result) => {
     if (err) {
       console.error('Error querying patients:', err);
@@ -43,7 +51,7 @@ var patients = cron.schedule("0 */10 * * * *", function () {
   });
 });
 
-var activity = cron.schedule("0 */10 * * * *", function () {
+var activity = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id, patient_id, lead_id, schedule_date, schedule_id, activity_rate, invoice_status, created_at, activity_category FROM patient_activity_advance', (err, result) => {
     if (err) {
       console.error('Error querying activity:', err);
@@ -59,7 +67,7 @@ var activity = cron.schedule("0 */10 * * * *", function () {
   });
 });
 
-var fb = cron.schedule("0 */10 * * * *", function () {
+var fb = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id,patient_id,lead_id,schedule_id,schedule_date,fb_rate,fb_amount,tax_rate,invoice_status,created_at FROM patient_activity_fb', (err, result) => {
     if (err) {
       console.error('Error querying activity:', err);
@@ -75,7 +83,7 @@ var fb = cron.schedule("0 */10 * * * *", function () {
   });
 });
 
-var emer = cron.schedule("0 */10 * * * *", function () {
+var emer = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id,patient_id,lead_id,schedule_id,schedule_date,emergency_care_rate,emergency_care_amount,tax_rate,invoice_status,created_at FROM patient_activity_medical_emergency_care', (err, result) => {
     if (err) {
       console.error('Error querying activity:', err);
@@ -93,7 +101,7 @@ var emer = cron.schedule("0 */10 * * * *", function () {
 
 
 
-var personal = cron.schedule("0 */10 * * * *", function () {
+var personal = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id,patient_id,lead_id,schedule_id,schedule_date,personal_care_rate,personal_care_amount,tax_rate,invoice_status,created_at FROM patient_activity_personal_care_service', (err, result) => {
     if (err) {
       console.error('Error querying activity:', err);
@@ -109,7 +117,7 @@ var personal = cron.schedule("0 */10 * * * *", function () {
   });
 });
 
-var eqp = cron.schedule("0 */10 * * * *", function () {
+var eqp = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id,patient_id,lead_id,schedule_id,schedule_date,medical_equipment_rate,medical_equipment_amount,tax_rate,invoice_status,created_at FROM patient_activity_medical_euipments', (err, result) => {
     if (err) {
       console.error('Error querying activity:', err);
@@ -127,7 +135,7 @@ var eqp = cron.schedule("0 */10 * * * *", function () {
 
 
 
-var pro = cron.schedule("0 */10 * * * *", function () {
+var pro = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id,patient_id,lead_id,schedule_id,schedule_date,procedure_service_rate,procedure_service_amount,tax_rate,invoice_status,created_at FROM patient_activity_procedure_service', (err, result) => {
     if (err) {
       console.error('Error querying activity:', err);
@@ -144,7 +152,7 @@ var pro = cron.schedule("0 */10 * * * *", function () {
 });
 
 
-var extra = cron.schedule("0 */10 * * * *", function () {
+var extra = cron.schedule("*/1 * * * * *", function () {
   pool.query('SELECT id,patient_id,lead_id,schedule_id,schedule_date,extra_service_rate,extra_service_amount,tax_rate,invoice_status,created_at FROM patient_activity_staff_extra_service', (err, result) => {
     if (err) {
       console.error('Error querying activity:', err);
@@ -161,19 +169,6 @@ var extra = cron.schedule("0 */10 * * * *", function () {
 });
 
 
-var main = cron.schedule("0 */10 * * * *", function (err) {
-    exec('node new_db.js')
-    if (err) {
-        console.err(err);
-    }
-    else 
-    {
-        console.log("Executed");
-    }
-    console.log("executed");
-});
-
-main.start();
 patients.start();
 activity.start();
 fb.start();
@@ -183,7 +178,8 @@ eqp.start();
 pro.start();
 extra.start();
 
-app.get('/emergency_care', (req, res) => {
+
+app.get('/emergency_eqp', (req, res) => {
   const { branch, start, end } = req.query;
   const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
   const patientActivityData = JSON.parse(fs.readFileSync('datas/patient_activity_medical_euipments.json'));
@@ -257,7 +253,7 @@ app.get('/fb', (req, res) => {
     if (filteredData.length > 0) {
       const totalAmount = filteredData.reduce((sum, activity) => sum + activity.fb_amount, 0);
       branchData[branchId].total_fb_amount += totalAmount;
-      branchData[branchId].data.push({ patient_id: userId, medical_equipment_amount: totalAmount });
+      branchData[branchId].data.push({ patient_id: userId, fb_Amounts: totalAmount });
     }
   });
 
@@ -267,7 +263,7 @@ app.get('/fb', (req, res) => {
     if (branchData[branch]) {
       response.push({ branch: branch, data: branchData[branch].data });
       const totalSumEmergencyCare = branchData[branch].total_fb_amount;
-      response.unshift({ branch: branch, total_fb_amount: totalSumEmergencyCare });
+      response.unshift({ branch: branch, fb_Amounts: totalSumEmergencyCare });
     } else {
       return res.status(404).json({ message: 'No data found for the given branch' });
     }
@@ -276,7 +272,7 @@ app.get('/fb', (req, res) => {
       response.push({ branch: branchId, data: branchData[branchId].data });
     }
     const totalSumEmergencyCare = response.reduce((sum, branch) => sum + branchData[branch.branch].total_fb_amount, 0);
-    response.unshift({ total_fb_amount: totalSumEmergencyCare });
+    response.unshift({ fb_Amounts: totalSumEmergencyCare });
   }
 
   res.json(response);
@@ -331,7 +327,198 @@ app.get('/personal_care', (req, res) => {
   res.json(response);
 });
 
-  
+app.get('/staff_extra_service', (req, res) => {
+  const { branch, start, end } = req.query;
+  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+  const patientActivityData = JSON.parse(fs.readFileSync('datas/patient_activity_staff_extra_service.json'));
+
+  const branchData = {};
+
+  usersData.forEach((user) => {
+    const branchId = user.branch_id;
+    if (!branchData[branchId]) {
+      branchData[branchId] = { total_extra_service_amount: 0, data: [] };
+    }
+
+    const userId = user.id;
+    const filteredData = patientActivityData.filter((activity) => {
+      const activityDate = new Date(activity.created_at);
+      return userId === activity.patient_id && activityDate >= new Date(start) && activityDate <= new Date(end);
+    });
+
+    if (filteredData.length > 0) {
+      const totalAmount = filteredData.reduce((sum, activity) => sum + activity.extra_service_amount, 0);
+      branchData[branchId].total_extra_service_amount += totalAmount;
+      branchData[branchId].data.push({ patient_id: userId, extra_service_amount: totalAmount });
+    }
+  });
+
+  const response = [];
+
+  if (branch) {
+    if (branchData[branch]) {
+      response.push({ branch: branch, data: branchData[branch].data });
+      const totalSumExtraService = branchData[branch].total_extra_service_amount;
+      response.unshift({ branch: branch, total_extra_service_amount: totalSumExtraService });
+    } else {
+      return res.status(404).json({ message: 'No data found for the given branch' });
+    }
+  } else {
+    for (const branchId in branchData) {
+      response.push({ branch: branchId, data: branchData[branchId].data });
+    }
+    const totalSumExtraService = response.reduce((sum, branch) => sum + branchData[branch.branch].total_extra_service_amount, 0);
+    response.unshift({ total_extra_service_amount: totalSumExtraService });
+  }
+
+  res.json(response);
+});
+
+
+app.get('/procedural_service', (req, res) => {
+  const { branch, start, end } = req.query;
+  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+  const patientActivityData = JSON.parse(fs.readFileSync('datas/patient_activity_procedure_service.json'));
+
+  const branchData = {};
+
+  usersData.forEach((user) => {
+    const branchId = user.branch_id;
+    if (!branchData[branchId]) {
+      branchData[branchId] = { total_procedure_service_amount: 0, data: [] };
+    }
+
+    const userId = user.id;
+    const filteredData = patientActivityData.filter((activity) => {
+      const activityDate = new Date(activity.created_at);
+      return userId === activity.patient_id && activityDate >= new Date(start) && activityDate <= new Date(end);
+    });
+
+    if (filteredData.length > 0) {
+      const totalAmount = filteredData.reduce((sum, activity) => sum + activity.procedure_service_amount, 0);
+      branchData[branchId].total_procedure_service_amount += totalAmount;
+      branchData[branchId].data.push({ patient_id: userId, procedure_service_amount: totalAmount });
+    }
+  });
+
+  const response = [];
+
+  if (branch) {
+    if (branchData[branch]) {
+      response.push({ branch: branch, data: branchData[branch].data });
+      const totalSumExtraService = branchData[branch].total_procedure_service_amount;
+      response.unshift({ branch: branch, total_procedure_service_amount: totalSumExtraService });
+    } else {
+      return res.status(404).json({ message: 'No data found for the given branch' });
+    }
+  } else {
+    for (const branchId in branchData) {
+      response.push({ branch: branchId, data: branchData[branchId].data });
+    }
+    const totalSumExtraService = response.reduce((sum, branch) => sum + branchData[branch.branch].total_procedure_service_amount, 0);
+    response.unshift({ total_procedure_service_amount: totalSumExtraService });
+  }
+
+  res.json(response);
+});
+
+
+
+app.get('/patient_activity', (req, res) => {
+  const { branch, start, end } = req.query;
+  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+  const patientActivityData = JSON.parse(fs.readFileSync('datas/patient_activity_fb.json'));
+
+  const branchData = {};
+
+  usersData.forEach((user) => {
+    const branchId = user.branch_id;
+    if (!branchData[branchId]) {
+      branchData[branchId] = { total_procedure_service_amount: 0, data: [] };
+    }
+
+    const userId = user.id;
+    const filteredData = patientActivityData.filter((activity) => {
+      const activityDate = new Date(activity.created_at);
+      return userId === activity.patient_id && activityDate >= new Date(start) && activityDate <= new Date(end);
+    });
+
+    if (filteredData.length > 0) {
+      const totalAmount = filteredData.reduce((sum, activity) => sum + activity.procedure_service_amount, 0);
+      branchData[branchId].total_procedure_service_amount += totalAmount;
+      branchData[branchId].data.push({ patient_id: userId, procedure_service_amount: totalAmount });
+    }
+  });
+
+  const response = [];
+
+  if (branch) {
+    if (branchData[branch]) {
+      response.push({ branch: branch, data: branchData[branch].data });
+      const totalSumExtraService = branchData[branch].total_procedure_service_amount;
+      response.unshift({ branch: branch, total_procedure_service_amount: totalSumExtraService });
+    } else {
+      return res.status(404).json({ message: 'No data found for the given branch' });
+    }
+  } else {
+    for (const branchId in branchData) {
+      response.push({ branch: branchId, data: branchData[branchId].data });
+    }
+    const totalSumExtraService = response.reduce((sum, branch) => sum + branchData[branch.branch].total_procedure_service_amount, 0);
+    response.unshift({ total_procedure_service_amount: totalSumExtraService });
+  }
+
+  res.json(response);
+});
+
+
+
+app.get('/patient_advance', (req, res) => {
+  const { branch, start, end } = req.query;
+  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+  const patientActivityData = JSON.parse(fs.readFileSync('datas/patient_activity_advance.json'));
+
+  const branchData = {};
+
+  usersData.forEach((user) => {
+    const branchId = user.branch_id;
+    if (!branchData[branchId]) {
+      branchData[branchId] = { total_activity_rate: 0, data: [] };
+    }
+
+    const userId = user.id;
+    const filteredData = patientActivityData.filter((activity) => {
+      const activityDate = new Date(activity.created_at);
+      return userId === activity.patient_id && activityDate >= new Date(start) && activityDate <= new Date(end);
+    });
+
+    if (filteredData.length > 0) {
+      const totalAmount = filteredData.reduce((sum, activity) => sum + activity.activity_rate, 0);
+      branchData[branchId].total_activity_rate += totalAmount;
+      branchData[branchId].data.push({ patient_id: userId, activity_rate: totalAmount });
+    }
+  });
+
+  const response = [];
+
+  if (branch) {
+    if (branchData[branch]) {
+      response.push({ branch: branch, data: branchData[branch].data });
+      const totalSumExtraService = branchData[branch].total_activity_rate;
+      response.unshift({ branch: branch, total_activity_rate: totalSumExtraService });
+    } else {
+      return res.status(404).json({ message: 'No data found for the given branch' });
+    }
+  } else {
+    for (const branchId in branchData) {
+      response.push({ branch: branchId, data: branchData[branchId].data });
+    }
+    const totalSumExtraService = response.reduce((sum, branch) => sum + branchData[branch.branch].total_activity_rate, 0);
+    response.unshift({ total_activity_rate: totalSumExtraService });
+  }
+
+  res.json(response);
+});
   
 app.get('/users', (req, res) => {
   const { branch } = req.query;
@@ -348,10 +535,6 @@ app.get('/users', (req, res) => {
 
   res.json(matchingUserIds);
 });
-
-
-
-
 
 
 app.listen(port, () => {
