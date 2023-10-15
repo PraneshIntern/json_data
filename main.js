@@ -5,6 +5,7 @@ const fs = require('fs');
 const mysql = require('mysql');
 const path = require('path');
 const cron = require('node-cron');
+const readline = require('readline');
 
 const app = express();
 const port = 3000;
@@ -195,6 +196,24 @@ createDataDirectory();
 // pro.start();
 // extra.start();
 
+
+// var schedules = cron.schedule("*/1 * * * * *", function () {
+//   pool.query('SELECT id,user_id,patient_id,bed_id,membership_id,gross_rate,tax_rate,membership_type,amount,ratecard_id,status,invoice_status FROM patient_schedules', (err, result) => {
+//     if (err) {
+//       console.error('Error querying activity:', err);
+//       return;
+//     }
+//     fs.writeFile(path.join('datas', 'patient_schedules.json'), JSON.stringify(result), function (err) {
+//       if (err) {
+//         console.error('Error saving data:', err);
+//       } else {
+//         console.log("patient_schedules data has been saved into the file with a 1-second interval");
+//       }
+//     });
+//   });
+// });
+
+// schedules.start();
 
 app.get('/emergency_eqp', (req, res) => {
   const { branch, start, end } = req.query;
@@ -604,7 +623,7 @@ app.get('/users', (req, res) => {
 
 
 app.get('/bill_invoice', (req, res) => {
-  const { branch, start, end } = req.query;
+  const { branch, start, end, status } = req.query;
   const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
   const patientActivityData = JSON.parse(fs.readFileSync('datas/bill_invoices.json'));
 
@@ -619,7 +638,9 @@ app.get('/bill_invoice', (req, res) => {
     const userId = user.id;
     const filteredData = patientActivityData.filter((activity) => {
       const activityDate = new Date(activity.created_at);
-      return userId === activity.patient_id && activityDate >= new Date(start) && activityDate <= new Date(end);
+      const statusMatched = status ? activity.status === status : true; // Check the status if provided
+
+      return userId === activity.patient_id && statusMatched && activityDate >= new Date(start) && activityDate <= new Date(end);
     });
 
     if (filteredData.length > 0) {
@@ -649,6 +670,87 @@ app.get('/bill_invoice', (req, res) => {
 
   res.json(response);
 });
+function readJSONFileInChunks(filePath, callback) {
+  const fileStream = fs.createReadStream(filePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
+
+  let data = '';
+
+  rl.on('line', (line) => {
+    data += line;
+  });
+
+  rl.on('close', () => {
+    try {
+      const jsonData = JSON.parse(data);
+      callback(null, jsonData);
+    } catch (error) {
+      callback(error);
+    }
+  });
+}
+
+app.get('/total_tax_amount', (req, res) => {
+  const { branch, start, end, status } = req.query;
+
+  // Define the paths to your JSON files
+  const jsonFilePaths = [
+    'datas/patient_activity_staff_extra_service.json',
+    'datas/patient_activity_procedure_service.json',
+    'datas/patient_activity_personal_care_service.json',
+    'datas/patient_activity_medical_euipments.json',
+    'datas/patient_activity_fb.json',
+    'datas/patient_activity_advance.json',
+    'datas/patient_schedules.json',
+  ];
+
+  const allLeadIds = [];
+
+  // Read and process JSON files in chunks
+  let fileCounter = 0;
+  function processNextFile() {
+    if (fileCounter < jsonFilePaths.length) {
+      const filePath = jsonFilePaths[fileCounter];
+      readJSONFileInChunks(path.join(__dirname, filePath), (error, jsonData) => {
+        if (error) {
+          console.error(`Error reading ${filePath}:`, error);
+        } else {
+          const leadIds = jsonData.map((record) => record.lead_id);
+          allLeadIds.push(...leadIds);
+        }
+        fileCounter++;
+        processNextFile();
+      });
+    } else {
+      // All files have been processed
+      const schedulesData = JSON.parse(fs.readFileSync('datas/patient_schedules.json'));
+
+      const filteredSchedules = schedulesData.filter((schedule) => {
+        return (
+          (!branch || schedule.branch === branch) &&
+          (!start || new Date(schedule.schedule_date) >= new Date(start)) &&
+          (!end || new Date(schedule.schedule_date) <= new Date(end)) &&
+          (!status || schedule.status === status) &&
+          allLeadIds.includes(schedule.id)
+        );
+      });
+
+      const totalTaxAmount = filteredSchedules.reduce((total, schedule) => {
+        total += schedule.tax_amount;
+        return total;
+      }, 0);
+
+      res.json({ total_tax_amount: totalTaxAmount });
+    }
+  }
+
+  // Start processing the JSON files
+  processNextFile();
+});
+
 
 
 app.listen(port, () => {
