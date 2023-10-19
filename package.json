@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "cros": "^1.0.1",
+    "express": "^4.18.2",
+    "JSONStream": "^1.3.5",
+    "morgan": "^1.10.0",
+    "mysql": "^2.18.1",
+    "node-cron": "^3.0.2"
+  }
+}
