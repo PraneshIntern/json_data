@@ -1,0 +1,65 @@
+[
+    {
+        "id": "1",
+        "branch_city_id": "1",
+        "branch_state_id": "1",
+        "branch_country_id": "1",
+        "branch_name": "Perungudi"
+    },
+    {
+        "id": "2",
+        "branch_city_id": "1",
+        "branch_state_id": "1",
+        "branch_country_id": "1",
+        "branch_name": "Arumbakkam"
+    },
+    {
+        "id": "3",
+        "branch_city_id": "1",
+        "branch_state_id": "1",
+        "branch_country_id": "1",
+        "branch_name": "Neelankarai"
+    },
+    {
+        "id": "4",
+        "branch_city_id": "1",
+        "branch_state_id": "1",
+        "branch_country_id": "1",
+        "branch_name": "Pallavaram"
+    },
+    {
+        "id": "5",
+        "branch_city_id": "2",
+        "branch_state_id": "2",
+        "branch_country_id": "1",
+        "branch_name": "Kasavanahalli"
+    },
+    {
+        "id": "6",
+        "branch_city_id": "3",
+        "branch_state_id": "3",
+        "branch_country_id": "1",
+        "branch_name": "Hyderabad"
+    },
+    {
+        "id": "7",
+        "branch_city_id": "4",
+        "branch_state_id": "4",
+        "branch_country_id": "1",
+        "branch_name": "Kochi"
+    },
+    {
+        "id": "8",
+        "branch_city_id": "5",
+        "branch_state_id": "1",
+        "branch_country_id": "1",
+        "branch_name": "Coimbatore"
+    },
+    {
+        "id": "9",
+        "branch_city_id": "1",
+        "branch_state_id": "1",
+        "branch_country_id": "1",
+        "branch_name": "Maduravoyal"
+    }
+]
