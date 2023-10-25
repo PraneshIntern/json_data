@@ -248,80 +248,15 @@ createDataDirectory();
 
 // branches.start();
 
-
-// app.get('/emergency_eqp', (req, res) => {
-//   const { branch, start, end } = req.query;
-//   const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
-//   const patientEmergencyEqpDataPath = 'datas/patient_activity_medical_euipments.json';
-
-//   const branchData = {};
-//   const totalSumEmergencyEqp = 0;
-
-//   const fileStream = fs.createReadStream(patientEmergencyEqpDataPath, { encoding: 'utf8' });
-//   const jsonStream = JSONStream.parse('*');
-
-//   fileStream.pipe(jsonStream);
-
-//   jsonStream.on('data', (data) => {
-//     if (!data) {
-//       return;
-//     }
-
-//     const branchId = usersData.find((user) => user.id === data.patient_id)?.branch_id;
-//     if (!branchId) {
-//       return;
-//     }
-
-//     if (!branchData[branchId]) {
-//       branchData[branchId] = { total_emergency_care_amount: 0, data: [] };
-//     }
-
-//     const activityDate = new Date(data.created_at);
-//     if (
-//       (!start || activityDate >= new Date(start)) &&
-//       (!end || activityDate <= new Date(end))
-//     ) {
-//       branchData[branchId].total_emergency_care_amount += data.medical_equipment_amount;
-//       branchData[branchId].data.push({
-//         branch: branchId,
-//         patient_id: data.patient_id,
-//         medical_equipment_amount: data.medical_equipment_amount,
-//       });
-//     }
-//   });
-
-//   jsonStream.on('end', () => {
-//     const response = [];
-
-//     if (branch) {
-//       if (branchData[branch]) {
-//         response.push({ branch: branch, data: branchData[branch].data });
-//         const totalSumEmergencyEqpAmount = branchData[branch].total_emergency_care_amount;
-//         response.unshift({ branch: branch, total_emergency_care_amount: totalSumEmergencyEqpAmount });
-//       } else {
-//         return res.status(404).json({ message: 'No data found for the given branch' });
-//       }
-//     } else {
-//       for (const branchId in branchData) {
-//         response.push({ branch: branchId, data: branchData[branchId].data });
-//       }
-//       const totalSumEmergencyEqpAmount = response.reduce((sum, branch) => sum + branchData[branch.branch].total_emergency_care_amount, 0);
-//       response.unshift({ total_emergency_care_amount: totalSumEmergencyEqpAmount });
-//     }
-
-//     res.json(response);
-//   });
-// });
-
-
 app.get('/emergency_eqp', (req, res) => {
-  const { branch, start, end } = req.query;
+  const { branch, start, end, city, state } = req.query;
   const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
   const patientEmergencyEqpDataPath = 'datas/patient_activity_medical_euipments.json';
+  const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
+
 
   const branchData = {};
-  const totalBranchAmounts = {};
-  let totalSumEmergencyEqpAmount = 0;
+  let totalSumEmergencyEqp = {};
 
   const fileStream = fs.createReadStream(patientEmergencyEqpDataPath, { encoding: 'utf8' });
   const jsonStream = JSONStream.parse('*');
@@ -333,69 +268,52 @@ app.get('/emergency_eqp', (req, res) => {
       return;
     }
 
-    const branchId = usersData.find((user) => user.id === data.patient_id)?.branch_id;
-    if (!branchId) {
-      return;
-    }
+    const branchId = usersData.find((user) => user.id === data.patient_id)?.branch_id || 'undefined';
 
     if (!branchData[branchId]) {
-      branchData[branchId] = { total_emergency_care_amount: 0, data: [] };
+      branchData[branchId] = { total_emergency_care_amount: 0.0, data: [] };
     }
 
-    const activityDate = new Date(data.created_at);
+    const branchInfo = masterBranches.find((branch) => branch.id === branchId);
+
     if (
-      (!start || activityDate >= new Date(start)) &&
-      (!end || activityDate <= new Date(end))
+      (!city || branchInfo.branch_city_id == city) &&
+      (!state || branchInfo.branch_state_id == state)
     ) {
-      branchData[branchId].total_emergency_care_amount += data.medical_equipment_amount;
-      totalSumEmergencyEqpAmount += data.medical_equipment_amount;
-      branchData[branchId].data.push({
-        branch: branchId,
-        patient_id: data.patient_id,
-        medical_equipment_amount: data.medical_equipment_amount,
-      });
+      const eqpAmount = parseFloat(data.medical_equipment_amount);
+      if (!isNaN(eqpAmount)) {
+        branchData[branchId].total_emergency_care_amount += eqpAmount;
+        branchData[branchId].data.push({
+          branch: branchId,
+          patient_id: data.patient_id,
+          medical_equipment_amount: eqpAmount.toFixed(2),
+        });
+
+        if (!totalSumEmergencyEqp[branchId]) {
+          totalSumEmergencyEqp[branchId] = 0.0;
+        }
+        totalSumEmergencyEqp[branchId] += eqpAmount;
+      }
     }
   });
 
   jsonStream.on('end', () => {
-    const response = [
-      {
-        total_emergency_care_amount: totalSumEmergencyEqpAmount,
-      },
-    ];
+    const response = [];
 
-    if (branch) {
-      if (branchData[branch]) {
-        const branchResponse = {
-          branch: branch,
-          total_emergency_care_amount: branchData[branch].total_emergency_care_amount,
-          data: branchData[branch].data,
-          branch_sum: branchData[branch].total_emergency_care_amount, 
-        };
-        response.push(branchResponse);
-      } else {
-        return res.status(404).json({ message: 'No data found for the given branch' });
-      }
-    } else {
-      for (const branchId in branchData) {
-        const branchResponse = {
-          branch: branchId,
-          total_emergency_care_amount: branchData[branchId].total_emergency_care_amount,
-          data: branchData[branchId].data,
-          branch_sum: branchData[branchId].total_emergency_care_amount, 
-        };
-        response.push(branchResponse);
-      }
+    let totalSum = 0.0;
+    for (const branchId in totalSumEmergencyEqp) {
+      totalSum += totalSumEmergencyEqp[branchId];
+    }
+    response.push({ total_emergency_care_amount: totalSum.toFixed(2) });
+
+    for (const branchId in branchData) {
+      response.push({ branch: branchId, total_emergency_care_amount: branchData[branchId].total_emergency_care_amount.toFixed(2) });
+      response.push({ branch: branchId, data: branchData[branchId].data });
     }
 
     res.json(response);
   });
 });
-
-
-
-
-
 
 
 app.get('/fb', (req, res) => {
@@ -404,7 +322,9 @@ app.get('/fb', (req, res) => {
   const patientFBDataPath = 'datas/patient_activity_fb.json';
   const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
 
+
   const branchData = {};
+  let totalSumFBAmount = 0.0;
 
   const fileStream = fs.createReadStream(patientFBDataPath, { encoding: 'utf8' });
   const jsonStream = JSONStream.parse('*');
@@ -428,7 +348,7 @@ app.get('/fb', (req, res) => {
       (!state || branchInfo.branch_state_id == state)
     ) {
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_fb_amount: 0, data: [] };
+        branchData[branchId] = { total_fb_amount: 0.0, data: [] };
       }
 
       const activityDate = new Date(data.created_at);
@@ -436,11 +356,12 @@ app.get('/fb', (req, res) => {
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
-        branchData[branchId].total_fb_amount += data.fb_amount;
+        branchData[branchId].total_fb_amount += parseFloat(data.fb_amount);
         branchData[branchId].data.push({
           patient_id: data.patient_id,
           fb_amount: data.fb_amount,
         });
+        totalSumFBAmount += parseFloat(data.fb_amount);
       }
     }
   });
@@ -450,26 +371,21 @@ app.get('/fb', (req, res) => {
 
     if (branch) {
       if (branchData[branch]) {
-        response.push({ branch: branch, data: branchData[branch].data, branch_sum: branchData[branch].total_fb_amount });
-        const totalSumFBAmount = branchData[branch].total_fb_amount;
-        response.unshift({ branch: branch, fb_amount: totalSumFBAmount });
+        response.push({ branch: branch, data: branchData[branch].data });
+        response.unshift({ branch: branch, fb_amount: branchData[branch].total_fb_amount.toFixed(2) });
       } else {
         return res.status(404).json({ message: 'No data found for the given branch' });
       }
     } else {
       for (const branchId in branchData) {
-        response.push({ branch: branchId, data: branchData[branchId].data, branch_sum: branchData[branchId].total_fb_amount });
+        response.push({ branch: branchId, data: branchData[branchId].data });
       }
-      const totalSumFBAmount = Object.values(branchData).reduce((sum, branch) => sum + branch.total_fb_amount, 0);
-      response.unshift({ fb_amount: totalSumFBAmount });
+      response.unshift({ fb_amount: totalSumFBAmount.toFixed(2) });
     }
 
     res.json(response);
   });
 });
-
-
-
 
 app.get('/personal_care', (req, res) => {
   const { branch, start, end, city, state } = req.query;
@@ -478,7 +394,7 @@ app.get('/personal_care', (req, res) => {
   const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
 
   const branchData = {};
-  const totalSumPersonalCare = 0;
+  let totalSumPersonalCare = 0.0;
 
   const fileStream = fs.createReadStream(patientPersonalCareDataPath, { encoding: 'utf8' });
   const jsonStream = JSONStream.parse('*');
@@ -502,7 +418,7 @@ app.get('/personal_care', (req, res) => {
       (!state || branchInfo.branch_state_id == state)
     ) {
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_sum_personal_care: 0, data: [] };
+        branchData[branchId] = { total_sum_personal_care: 0.0, data: [] };
       }
 
       const activityDate = new Date(data.created_at);
@@ -510,11 +426,12 @@ app.get('/personal_care', (req, res) => {
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
-        branchData[branchId].total_sum_personal_care += data.personal_care_amount;
+        branchData[branchId].total_sum_personal_care += parseFloat(data.personal_care_amount);
         branchData[branchId].data.push({
-          index: data.patient_id,
-          personal_care_amount: data.personal_care_amount,
+          patient_id: data.patient_id,
+          personal_care_amount: parseFloat(data.personal_care_amount).toFixed(2),
         });
+        totalSumPersonalCare += parseFloat(data.personal_care_amount);
       }
     }
   });
@@ -525,17 +442,16 @@ app.get('/personal_care', (req, res) => {
     if (branch) {
       if (branchData[branch]) {
         response.branch = branch;
-        response.total_sum_personal_care = branchData[branch].total_sum_personal_care;
+        response.total_sum_personal_care = branchData[branch].total_sum_personal_care.toFixed(2);
         response.data = branchData[branch].data;
       } else {
         return res.status(404).json({ message: 'No data found for the given branch' });
       }
     } else {
-      response.total_sum_personal_care = totalSumPersonalCare;
+      response.total_sum_personal_care = totalSumPersonalCare.toFixed(2);
       response.branches = [];
 
       for (const branchId in branchData) {
-        response.total_sum_personal_care += branchData[branchId].total_sum_personal_care;
         response.branches.push({
           branch: branchId,
           data: branchData[branchId].data,
@@ -546,12 +462,6 @@ app.get('/personal_care', (req, res) => {
     res.json(response);
   });
 });
-
-
-
-
-
-
 
 app.get('/procedural_service', (req, res) => {
   const { branch, start, end, city, state } = req.query;
@@ -584,7 +494,7 @@ app.get('/procedural_service', (req, res) => {
       (!state || branchInfo.branch_state_id == state)
     ) {
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_procedure_service_amount: 0, data: [] };
+        branchData[branchId] = { total_procedure_service_amount: 0.0, data: [] };
       }
 
       const activityDate = new Date(data.created_at);
@@ -592,7 +502,7 @@ app.get('/procedural_service', (req, res) => {
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
-        branchData[branchId].total_procedure_service_amount += data.procedure_service_amount;
+        branchData[branchId].total_procedure_service_amount += parseFloat(data.procedure_service_amount);
         branchData[branchId].data.push({
           patient_id: data.patient_id,
           procedure_service_amount: data.procedure_service_amount,
@@ -608,11 +518,11 @@ app.get('/procedural_service', (req, res) => {
       if (branchData[branch]) {
         const branchResponse = {
           branch,
-          total_procedure_service_amount: branchData[branch].total_procedure_service_amount,
+          total_procedure_service_amount: branchData[branch].total_procedure_service_amount.toFixed(2),
           data: branchData[branch].data,
         };
         response.push(branchResponse);
-        const totalBranchSum = branchData[branch].total_procedure_service_amount;
+        const totalBranchSum = branchData[branch].total_procedure_service_amount.toFixed(2);
         response.unshift({ branch, total_procedure_service_amount: totalBranchSum });
       } else {
         return res.status(404).json({ message: 'No data found for the given branch' });
@@ -621,25 +531,23 @@ app.get('/procedural_service', (req, res) => {
       for (const branchId in branchData) {
         response.push({
           branch: branchId,
-          total_procedure_service_amount: branchData[branchId].total_procedure_service_amount,
+          total_procedure_service_amount: branchData[branchId].total_procedure_service_amount.toFixed(2),
           data: branchData[branchId].data,
         });
-        const totalSumBranch = branchData[branchId].total_procedure_service_amount;
+        const totalSumBranch = branchData[branchId].total_procedure_service_amount.toFixed(2);
         if (!totalBranchSum[branchId]) {
-          totalBranchSum[branchId] = 0;
+          totalBranchSum[branchId] = 0.0;
         }
-        totalBranchSum[branchId] += totalSumBranch;
+        totalBranchSum[branchId] += parseFloat(totalSumBranch);
       }
 
-      const totalSumProcedureService = response.reduce((sum, branch) => sum + branch.total_procedure_service_amount, 0);
+      const totalSumProcedureService = response.reduce((sum, branch) => sum + parseFloat(branch.total_procedure_service_amount), 0).toFixed(2);
       response.unshift({ total_procedure_service_amount: totalSumProcedureService });
     }
 
     res.json(response);
   });
 });
-
-
 
 app.get('/patient_advance', (req, res) => {
   const { branch, start, end, city, state } = req.query;
@@ -648,7 +556,7 @@ app.get('/patient_advance', (req, res) => {
   const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
 
   const branchData = {};
-  const totalBranchSum = {};
+  let totalSumActivityRate = 0.0;
 
   const fileStream = fs.createReadStream(patientAdvanceDataPath, { encoding: 'utf8' });
   const jsonStream = JSONStream.parse('*');
@@ -672,7 +580,7 @@ app.get('/patient_advance', (req, res) => {
       (!state || branchInfo.branch_state_id == state)
     ) {
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_activity_rate: 0, data: [] };
+        branchData[branchId] = { total_activity_rate: 0.0, data: [] };
       }
 
       const activityDate = new Date(data.created_at);
@@ -680,11 +588,14 @@ app.get('/patient_advance', (req, res) => {
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
-        branchData[branchId].total_activity_rate += data.activity_rate;
-        branchData[branchId].data.push({
-          patient_id: data.patient_id,
-          activity_rate: data.activity_rate,
-        });
+        const activityRate = parseFloat(data.activity_rate);
+        if (!isNaN(activityRate)) {
+          branchData[branchId].total_activity_rate += activityRate;
+          branchData[branchId].data.push({
+            patient_id: data.patient_id,
+            activity_rate: activityRate.toFixed(2),
+          });
+        }
       }
     }
   });
@@ -696,12 +607,10 @@ app.get('/patient_advance', (req, res) => {
       if (branchData[branch]) {
         const branchResponse = {
           branch,
-          total_activity_rate: branchData[branch].total_activity_rate,
+          total_activity_rate: branchData[branch].total_activity_rate.toFixed(2),
           data: branchData[branch].data,
         };
         response.push(branchResponse);
-        const totalBranchSum = branchData[branch].total_activity_rate;
-        response.unshift({ branch, total_branch_sum: totalBranchSum });
       } else {
         return res.status(404).json({ message: 'No data found for the given branch' });
       }
@@ -709,24 +618,18 @@ app.get('/patient_advance', (req, res) => {
       for (const branchId in branchData) {
         response.push({
           branch: branchId,
-          total_activity_rate: branchData[branchId].total_activity_rate,
+          total_activity_rate: branchData[branchId].total_activity_rate.toFixed(2),
           data: branchData[branchId].data,
         });
-        const totalSumBranch = branchData[branchId].total_activity_rate;
-        if (!totalBranchSum[branchId]) {
-          totalBranchSum[branchId] = 0;
-        }
-        totalBranchSum[branchId] += totalSumBranch;
+        totalSumActivityRate += branchData[branchId].total_activity_rate;
       }
 
-      const totalSumActivityRate = response.reduce((sum, branch) => sum + branch.total_activity_rate, 0);
-      response.unshift({ total_activity_rate: totalSumActivityRate });
+      response.unshift({ total_activity_rate: totalSumActivityRate.toFixed(2) });
     }
 
     res.json(response);
   });
 });
-
 
 
 app.get('/users', (req, res) => {
@@ -744,7 +647,6 @@ app.get('/users', (req, res) => {
 
   res.json(matchingUserIds);
 });
-
 
 app.get('/bill_invoice', (req, res) => {
   const { branch, start, end, status, city, state } = req.query;
@@ -777,7 +679,7 @@ app.get('/bill_invoice', (req, res) => {
       (!state || branchInfo.branch_state_id == state)
     ) {
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_total_amount: 0, data: [] };
+        branchData[branchId] = { branch_total_amount: 0, data: [] };
       }
 
       const activityDate = new Date(data.created_at);
@@ -785,7 +687,7 @@ app.get('/bill_invoice', (req, res) => {
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
-        branchData[branchId].total_total_amount += data.total_amount;
+        branchData[branchId].branch_total_amount += parseFloat(data.total_amount);
         branchData[branchId].data.push({
           patient_id: data.patient_id,
           total_amount: data.total_amount,
@@ -799,14 +701,15 @@ app.get('/bill_invoice', (req, res) => {
 
     if (branch) {
       if (branchData[branch]) {
+        response.push({
+          branch: branch,
+          branch_total_amount: branchData[branch].branch_total_amount.toFixed(2),
+        });
         const branchResponse = {
           branch,
-          total_total_amount: branchData[branch].total_total_amount,
           data: branchData[branch].data,
         };
         response.push(branchResponse);
-        const totalBranchSum = branchData[branch].total_total_amount;
-        response.unshift({ branch, total_total_amount: totalBranchSum });
       } else {
         return res.status(404).json({ message: 'No data found for the given branch' });
       }
@@ -814,179 +717,24 @@ app.get('/bill_invoice', (req, res) => {
       for (const branchId in branchData) {
         response.push({
           branch: branchId,
-          total_total_amount: branchData[branchId].total_total_amount,
+          branch_total_amount: branchData[branchId].branch_total_amount.toFixed(2),
+        });
+        response.push({
+          branch: branchId,
           data: branchData[branchId].data,
         });
-        const totalSumBranch = branchData[branchId].total_total_amount;
-        if (!totalBranchSum[branchId]) {
-          totalBranchSum[branchId] = 0;
-        }
-        totalBranchSum[branchId] += totalSumBranch;
       }
 
-      const totalSumExtraService = response.reduce((sum, branch) => sum + branch.total_total_amount, 0);
+      const totalSumExtraService = response
+        .filter((item) => !item.data)
+        .reduce((sum, branch) => sum + parseFloat(branch.branch_total_amount), 0)
+        .toFixed(2);
       response.unshift({ total_total_amount: totalSumExtraService });
     }
 
     res.json(response);
   });
 });
-
-
-// app.get('/staff_extra_service', (req, res) => {
-//   const { branch, start, end } = req.query;
-//   const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
-//   const patientActivityDataPath = 'datas/patient_activity_staff_extra_service.json';
-
-//   const branchData = {};
-
-//   const fileStream = fs.createReadStream(patientActivityDataPath, { encoding: 'utf8' });
-//   const jsonStream = JSONStream.parse('*');
-
-//   fileStream.pipe(jsonStream);
-
-//   jsonStream.on('data', (data) => {
-//     if (!data) {
-//       return;
-//     }
-
-//     const branchId = usersData.find((user) => user.id === data.patient_id)?.branch_id;
-//     if (!branchId) {
-//       return;
-//     }
-
-//     if (!branchData[branchId]) {
-//       branchData[branchId] = { total_extra_service_amount: 0, data: [] };
-//     }
-
-//     const activityDate = new Date(data.created_at);
-//     if (
-//       (!start || activityDate >= new Date(start)) &&
-//       (!end || activityDate <= new Date(end))
-//     ) {
-//       branchData[branchId].total_extra_service_amount += data.extra_service_amount;
-//       branchData[branchId].data.push({
-//         patient_id: data.patient_id,
-//         extra_service_amount: data.extra_service_amount,
-//       });
-//     }
-//   });
-
-//   jsonStream.on('end', () => {
-//     const response = [];
-
-//     if (branch) {
-//       if (branchData[branch]) {
-//         const branchResponse = {
-//           branch,
-//           total_extra_service_amount: branchData[branch].total_extra_service_amount,
-//           data: branchData[branch].data,
-//         };
-//         response.push(branchResponse);
-//       } else {
-//         return res.status(404).json({ message: 'No data found for the given branch' });
-//       }
-//     } else {
-//       for (const branchId in branchData) {
-//         const branchResponse = {
-//           branch: branchId,
-//           total_extra_service_amount: branchData[branchId].total_extra_service_amount,
-//           data: branchData[branchId].data,
-//         };
-//         response.push(branchResponse);
-//       }
-//       const totalSumExtraService = response.reduce(
-//         (sum, branch) => sum + branch.total_extra_service_amount,
-//         0
-//       );
-//       response.unshift({ total_extra_service_amount: totalSumExtraService });
-//     }
-
-//     res.json(response);
-//   });
-// });
-
-// app.get('/staff_extra_service', (req, res) => {
-//   const { branch, start, end, city, state } = req.query;
-//   const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
-//   const patientActivityDataPath = 'datas/patient_activity_staff_extra_service.json';
-
-//   const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
-
-//   const branchData = {};
-
-//   const fileStream = fs.createReadStream(patientActivityDataPath, { encoding: 'utf8' });
-//   const jsonStream = JSONStream.parse('*');
-
-//   fileStream.pipe(jsonStream);
-
-//   jsonStream.on('data', (data) => {
-//     if (!data) {
-//       return;
-//     }
-
-//     const branchId = usersData.find((user) => user.id === data.patient_id)?.branch_id;
-//     if (!branchId) {
-//       return;
-//     }
-
-//     const branchInfo = masterBranches.find((branch) => branch.id === branchId);
-
-//     if (
-//       (!city || branchInfo.branch_city_id == city) &&
-//       (!state || branchInfo.branch_state_id == state)
-//     ) {
-//       if (!branchData[branchId]) {
-//         branchData[branchId] = { total_extra_service_amount: 0, data: [] };
-//       }
-
-//       const activityDate = new Date(data.created_at);
-//       if (
-//         (!start || activityDate >= new Date(start)) &&
-//         (!end || activityDate <= new Date(end))
-//       ) {
-//         branchData[branchId].total_extra_service_amount += data.extra_service_amount;
-//         branchData[branchId].data.push({
-//           patient_id: data.patient_id,
-//           extra_service_amount: data.extra_service_amount,
-//         });
-//       }
-//     }
-//   });
-
-//   jsonStream.on('end', () => {
-//     const response = [];
-//     const totalSumExtraService = Object.values(branchData).reduce(
-//       (sum, branch) => sum + branch.total_extra_service_amount,
-//       0
-//     );
-
-//     if (branch) {
-//       if (branchData[branch]) {
-//         response.push({
-//           branch: branch,
-//           total_extra_service_amount: branchData[branch].total_extra_service_amount,
-//           data: branchData[branch].data,
-//         });
-//         response.unshift({ branch, total_extra_service_amount: totalSumExtraService });
-//       } else {
-//         return res.status(404).json({ message: 'No data found for the given branch' });
-//       }
-//     } else {
-//       for (const branchId in branchData) {
-//         response.push({
-//           branch: branchId,
-//           total_extra_service_amount: branchData[branchId].total_extra_service_amount,
-//           data: branchData[branchId].data,
-//         });
-//       }
-//       response.unshift({ total_extra_service_amount: totalSumExtraService });
-//     }
-
-//     res.json(response);
-//   });
-// });
-
 
 app.get('/staff_extra_service', (req, res) => {
   const { branch, start, end, city, state } = req.query;
@@ -995,6 +743,7 @@ app.get('/staff_extra_service', (req, res) => {
   const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
 
   const branchData = {};
+  const totalBranchSum = {};
 
   const fileStream = fs.createReadStream(patientActivityDataPath, { encoding: 'utf8' });
   const jsonStream = JSONStream.parse('*');
@@ -1018,7 +767,7 @@ app.get('/staff_extra_service', (req, res) => {
       (!state || branchInfo.branch_state_id == state)
     ) {
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_extra_service_amount: 0, data: [] };
+        branchData[branchId] = { total_extra_service_amount: 0.0, data: [] };
       }
 
       const activityDate = new Date(data.created_at);
@@ -1026,7 +775,7 @@ app.get('/staff_extra_service', (req, res) => {
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
-        branchData[branchId].total_extra_service_amount += data.extra_service_amount;
+        branchData[branchId].total_extra_service_amount += parseFloat(data.extra_service_amount);
         branchData[branchId].data.push({
           patient_id: data.patient_id,
           extra_service_amount: data.extra_service_amount,
@@ -1037,18 +786,17 @@ app.get('/staff_extra_service', (req, res) => {
 
   jsonStream.on('end', () => {
     const response = [];
-    const totalSumExtraService = Object.values(branchData).reduce(
-      (sum, branch) => sum + branch.total_extra_service_amount,
-      0
-    );
 
     if (branch) {
       if (branchData[branch]) {
-        response.push({
-          branch: branch,
-          total_extra_service_amount: branchData[branch].total_extra_service_amount,
+        const branchResponse = {
+          branch,
+          total_extra_service_amount: branchData[branch].total_extra_service_amount.toFixed(2),
           data: branchData[branch].data,
-        });
+        };
+        response.push(branchResponse);
+        const totalBranchSum = branchData[branch].total_extra_service_amount.toFixed(2);
+        response.unshift({ branch, total_extra_service_amount: totalBranchSum });
       } else {
         return res.status(404).json({ message: 'No data found for the given branch' });
       }
@@ -1056,17 +804,23 @@ app.get('/staff_extra_service', (req, res) => {
       for (const branchId in branchData) {
         response.push({
           branch: branchId,
-          total_extra_service_amount: branchData[branchId].total_extra_service_amount,
+          total_extra_service_amount: branchData[branchId].total_extra_service_amount.toFixed(2),
           data: branchData[branchId].data,
         });
+        const totalSumBranch = branchData[branchId].total_extra_service_amount.toFixed(2);
+        if (!totalBranchSum[branchId]) {
+          totalBranchSum[branchId] = 0.0;
+        }
+        totalBranchSum[branchId] += parseFloat(totalSumBranch);
       }
+
+      const totalSumExtraService = response.reduce((sum, branch) => sum + parseFloat(branch.total_extra_service_amount), 0).toFixed(2);
       response.unshift({ total_extra_service_amount: totalSumExtraService });
     }
 
     res.json(response);
   });
 });
-
 
 app.get('/patient_activity_tax', (req, res) => {
   const { start, end, branch } = req.query;
@@ -1077,34 +831,47 @@ app.get('/patient_activity_tax', (req, res) => {
   patientActivityData.forEach((activity) => {
     const activityDate = new Date(activity.created_at);
     if (activityDate >= new Date(start) && activityDate <= new Date(end)) {
-      const branchId = activity.branch_id;
+      const branchId = activity.branch_id || 'undefined';
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_tax_rate: 0 };
+        branchData[branchId] = { total_tax_rate: 0, data: [] };
       }
 
       const taxRate = activity.tax_rate || 0;
-      branchData[branchId].total_tax_rate += taxRate;
+      branchData[branchId].total_tax_rate += parseFloat(taxRate); 
+      branchData[branchId].data.push({
+        activity_id: activity.id,
+        tax_rate: taxRate,
+      });
     }
   });
 
-  if (branch) {
+  let response = [];
+
+  if (!branch) {
+    for (const branchId in branchData) {
+      response.push({
+        branch: branchId === 'undefined' ? 'All Branches' : branchId,
+        total_tax_rate: branchData[branchId].total_tax_rate.toFixed(2),
+        data: branchData[branchId].data,
+      });
+    }
+  } else {
     if (branchData[branch]) {
-      res.json({ total_tax_rate: branchData[branch].total_tax_rate });
+      response.push({
+        branch: branch,
+        total_tax_rate: branchData[branch].total_tax_rate.toFixed(2),
+        data: branchData[branch].data,
+      });
     } else {
       return res.status(404).json({ message: 'No data found for the given branch' });
     }
-  } else {
-    let totalSumTaxRate = 0;
-    for (const branchId in branchData) {
-      totalSumTaxRate += branchData[branchId].total_tax_rate;
-    }
-
-    res.json({ total_tax_rate: totalSumTaxRate });
   }
+
+  const totalSumTaxRate = response.reduce((sum, branch) => sum + parseFloat(branch.total_tax_rate), 0).toFixed(2);
+  response.unshift({ total_tax_rate: totalSumTaxRate });
+
+  res.json(response);
 });
-
-
-
 
 app.listen(port, () => {
   console.log('Server has been started on', port, "http://localhost:8080");
