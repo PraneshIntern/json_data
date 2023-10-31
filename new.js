@@ -897,6 +897,287 @@ app.get('/patient_activity_tax', (req, res) => {
   res.json(response);
 });
 
+app.get('/patient_schedules', (req, res) => {
+  const { city, branch, state, start, end, membership_type, status, invoice_status } = req.query;
+  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+  const patientsSchedulesDataPath = 'datas/patient_schedules.json';
+  const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
+
+  const branchData = {};
+  const totalBranchSum = {};
+
+  const fileStream = fs.createReadStream(patientsSchedulesDataPath, { encoding: 'utf8' });
+  const jsonStream = JSONStream.parse('*');
+
+  fileStream.pipe(jsonStream);
+
+  jsonStream.on('data', (data) => {
+    if (!data) {
+      return;
+    }
+
+    const branchInfo = masterBranches.find((branch) => branch.id === data.branch_id);
+    const activityDate = new Date(data.schedule_date);
+
+    const isWithinDateRange = (!start || activityDate >= new Date(start)) &&
+      (!end || activityDate <= new Date(end));
+    const isMatchingMembershipType = !membership_type || data.membership_type === membership_type;
+    const isMatchingStatus = !status || data.status === status;
+    const isMatchingInvoiceStatus = !invoice_status || data.invoice_status === invoice_status;
+
+    if (
+      branchInfo &&
+      isWithinDateRange &&
+      isMatchingStatus &&
+      isMatchingInvoiceStatus
+    ) {
+      const branchId = branchInfo.id;
+      if (!branchData[branchId]) {
+        branchData[branchId] = { total_gross_amount: 0, data: [] };
+      }
+
+      const grossAmount = parseFloat(data.gross_rate);
+      if (!isNaN(grossAmount)) {
+        branchData[branchId].total_gross_amount += grossAmount;
+        branchData[branchId].data.push({
+          patient_id: data.patient_id,
+          gross_rate: grossAmount.toFixed(2),
+          tax_rate: data.tax_rate,
+          amount: data.amount,
+          ratecard_id: data.ratecard_id,
+          schedule_date: data.schedule_date,
+        });
+
+        if (!totalBranchSum[branchId]) {
+          totalBranchSum[branchId] = 0.0;
+        }
+        totalBranchSum[branchId] += grossAmount;
+      }
+    }
+  });
+
+  jsonStream.on('end', () => {
+    const response = [];
+
+    for (const branchId in branchData) {
+      const branchResponse = {
+        branch: branchId,
+      };
+      if (membership_type && membership_type.toLowerCase() === 'monthly') {
+        const monthlyData = getMonthlyData(branchData[branchId].data);
+        branchResponse.data = monthlyData;
+      } else {
+        branchResponse.data = branchData[branchId].data || [];
+      }
+      branchResponse.total_gross_amount = branchData[branchId].total_gross_amount.toFixed(2);
+      response.push(branchResponse);
+    }
+
+    let totalSum = 0.0;
+    for (const branchId in totalBranchSum) {
+      totalSum += totalBranchSum[branchId];
+    }
+
+    response.unshift({ total_gross_amount: totalSum.toFixed(2) });
+
+    res.json(response);
+  });
+
+  // Function to get data for the entire month
+  function getMonthlyData(data) {
+    const monthlyData = {};
+    data.forEach((entry) => {
+      const scheduleDate = new Date(entry.schedule_date);
+      const month = scheduleDate.getMonth() + 1; // Month is zero-based
+      const year = scheduleDate.getFullYear();
+      const key = `${year}-${month}`;
+      if (!monthlyData[key]) {
+        monthlyData[key] = entry;
+      }
+    });
+    return Object.values(monthlyData);
+  }
+});
+
+
+app.get('/tester', (req, res) => {
+  const { city, branch, state, start, end, membership_type, status, invoice_status } = req.query;
+  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+  const patientsSchedulesDataPath = 'datas/patient_schedules.json';
+  const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
+
+  const branchData = {};
+  const totalBranchSum = {};
+
+  const fileStream = fs.createReadStream(patientsSchedulesDataPath, { encoding: 'utf8' });
+  const jsonStream = JSONStream.parse('*');
+
+  fileStream.pipe(jsonStream);
+
+  jsonStream.on('data', (data) => {
+    if (!data) {
+      return;
+    }
+
+    const branchInfo = masterBranches.find((branch) => branch.id === data.branch_id);
+    const activityDate = new Date(data.schedule_date);
+
+    const isWithinDateRange = (!start || activityDate >= new Date(start)) &&
+      (!end || activityDate <= new Date(end));
+    const isMatchingMembershipType = !membership_type || data.membership_type === membership_type;
+    const isMatchingStatus = !status || data.status === status;
+    const isMatchingInvoiceStatus = !invoice_status || data.invoice_status === invoice_status;
+
+    if (
+      branchInfo &&
+      isWithinDateRange &&
+      isMatchingStatus &&
+      isMatchingInvoiceStatus
+    ) {
+      const branchId = branchInfo.id;
+      if (!branchData[branchId]) {
+        branchData[branchId] = { total_gross_amount: 0, data: [] };
+      }
+
+      const grossAmount = parseFloat(data.gross_rate);
+      if (!isNaN(grossAmount)) {
+        branchData[branchId].total_gross_amount += grossAmount;
+        branchData[branchId].data.push({
+          patient_id: data.patient_id,
+          gross_rate: grossAmount.toFixed(2),
+          tax_rate: data.tax_rate,
+          amount: data.amount,
+          ratecard_id: data.ratecard_id,
+          schedule_date: data.schedule_date,
+        });
+
+        if (!totalBranchSum[branchId]) {
+          totalBranchSum[branchId] = 0.0;
+        }
+        totalBranchSum[branchId] += grossAmount;
+      }
+    }
+  });
+
+  jsonStream.on('end', () => {
+    const response = [];
+
+    for (const branchId in branchData) {
+      // If membership_type is Monthly, calculate the sum for the entire month
+      if (membership_type && membership_type.toLowerCase() === 'monthly') {
+        const monthlySum = calculateMonthlySum(branchData[branchId]);
+        response.push({
+          branch: branchId,
+          total_gross_amount: monthlySum.toFixed(2),
+        });
+      } else {
+        response.push({
+          branch: branchId,
+          total_gross_amount: branchData[branchId].total_gross_amount.toFixed(2),
+          data: branchData[branchId].data,
+        });
+      }
+    }
+
+    let totalSum = 0.0;
+    for (const branchId in totalBranchSum) {
+      totalSum += totalBranchSum[branchId];
+    }
+
+    response.unshift({ total_gross_amount: totalSum.toFixed(2) });
+
+    res.json(response);
+  });
+});
+
+function calculateMonthlySum(data) {
+  const monthlySum = data.data.reduce((sum, entry) => {
+    const monthStartDate = new Date(entry.schedule_date);
+    monthStartDate.setDate(1); // Set the day to 1st of the month
+    if (monthStartDate <= new Date(entry.schedule_date)) {
+      sum += parseFloat(entry.gross_rate);
+    }
+    return sum;
+  }, 0);
+  return monthlySum;
+}
+
+
+app.get('/consolidated_bill', (req, res) => {
+  const { branch, city, state, start, end, status, payment_status } = req.query;
+  const consolidatedBillDataPath = 'datas/consolidated_bill.json';
+  const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
+
+  const branchData = {};
+  const totalBranchSum = {};
+
+  const fileStream = fs.createReadStream(consolidatedBillDataPath, { encoding: 'utf8' });
+  const jsonStream = JSONStream.parse('*');
+
+  fileStream.pipe(jsonStream);
+
+  jsonStream.on('data', (data) => {
+    if (!data) {
+      return;
+    }
+
+    const branchId = data.branch_id;
+    const branchInfo = masterBranches.find((branch) => branch.id === branchId);
+    const activityDate = new Date(data.created_at);
+    
+    const isWithinDateRange = (!start || activityDate >= new Date(start)) &&
+      (!end || activityDate <= new Date(end));
+
+    const isMatchingBranch = !branch || branch === branchId;
+    const isMatchingCity = !city || branchInfo.branch_city_id == city;
+    const isMatchingState = !state || branchInfo.branch_state_id == state;
+    const isMatchingStatus = !status || data.status === status;
+    const isMatchingPaymentStatus = !payment_status || data.payment_status === payment_status;
+
+    if (isWithinDateRange && isMatchingBranch && isMatchingCity && isMatchingState && isMatchingStatus && isMatchingPaymentStatus) {
+      if (!branchData[branchId]) {
+        branchData[branchId] = { total_amount: 0, data: [] };
+      }
+
+      const totalAmount = parseFloat(data.total_amount);
+      if (!isNaN(totalAmount)) {
+        branchData[branchId].total_amount += totalAmount;
+        branchData[branchId].data.push({
+          id: data.id,
+          total_amount: totalAmount.toFixed(2),
+        });
+
+        if (!totalBranchSum[branchId]) {
+          totalBranchSum[branchId] = 0.0;
+        }
+        totalBranchSum[branchId] += totalAmount;
+      }
+    }
+  });
+
+  jsonStream.on('end', () => {
+    const response = [];
+
+    for (const branchId in branchData) {
+      response.push({
+        branch: branchId,
+        total_amount: branchData[branchId].total_amount.toFixed(2),
+        data: branchData[branchId].data,
+      });
+    }
+
+    let totalSum = 0.0;
+    for (const branchId in totalBranchSum) {
+      totalSum += totalBranchSum[branchId];
+    }
+
+    response.unshift({ total_amount: totalSum.toFixed(2) });
+
+    res.json(response);
+  });
+});
+
+
 app.listen(port, () => {
   console.log('Server has been started on', port, "http://localhost:8080");
 });
