@@ -667,7 +667,6 @@ app.get('/users', (req, res) => {
 
   res.json(matchingUserIds);
 });
-
 app.get('/bill_invoice', (req, res) => {
   const { branch, start, end, status, city, state } = req.query;
   const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
@@ -688,7 +687,8 @@ app.get('/bill_invoice', (req, res) => {
     }
 
     const branchId = usersData.find((user) => user.id === data.patient_id)?.branch_id;
-    if (!branchId) {
+    const user = usersData.find((user) => user.id === data.patient_id);
+    if (!branchId || !user) {
       return;
     }
 
@@ -702,14 +702,19 @@ app.get('/bill_invoice', (req, res) => {
         branchData[branchId] = { branch_total_amount: 0, data: [] };
       }
 
-      const activityDate = new Date(data.created_at);
+      const activityDate = new Date(data.invoice_date);
       if (
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
         branchData[branchId].branch_total_amount += parseFloat(data.total_amount);
         branchData[branchId].data.push({
+          branch_id: branchId,
           patient_id: data.patient_id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          invoice_date: data.invoice_date,
+          invoice_due_date: data.invoice_due_date,
           total_amount: data.total_amount,
         });
         if (!totalBranchSum[branchId]) {
@@ -759,6 +764,8 @@ app.get('/bill_invoice', (req, res) => {
     res.json(response);
   });
 });
+
+
 
 app.get('/staff_extra_service', (req, res) => {
   const { branch, start, end, city, state } = req.query;
@@ -1144,7 +1151,13 @@ app.get('/consolidated_bill', (req, res) => {
         branchData[branchId].total_amount += totalAmount;
         branchData[branchId].data.push({
           id: data.id,
-          total_amount: totalAmount.toFixed(2),
+          patient_id: data.patient_id,  
+          created_at: data.created_at,    
+          status: data.status,            
+          payment_status: data.payment_status, 
+          first_name: data.first_name,    
+          last_name: data.last_name ,
+          total_amount: totalAmount.toFixed(2)
         });
 
         if (!totalBranchSum[branchId]) {
