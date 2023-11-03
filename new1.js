@@ -852,17 +852,19 @@ app.get('/bill_invoice', (req, res) => {
     res.json(response);
   });
 });
-
-
-
 app.get('/staff_extra_service', (req, res) => {
   const { branch, start, end, city, state } = req.query;
-  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+  const extraServiceDataPath = 'datas/extra_service.json';
   const patientActivityDataPath = 'datas/patient_activity_staff_extra_service.json';
   const masterBranches = JSON.parse(fs.readFileSync('datas/master_branches.json'));
+  const usersData = JSON.parse(fs.readFileSync('datas/users.json'));
+
+  const userMap = new Map(usersData.map(user => [user.id, user]));
 
   const branchData = {};
   const totalBranchSum = {};
+
+  const extraServiceData = JSON.parse(fs.readFileSync(extraServiceDataPath));
 
   const fileStream = fs.createReadStream(patientActivityDataPath, { encoding: 'utf8' });
   const jsonStream = JSONStream.parse('*');
@@ -874,19 +876,20 @@ app.get('/staff_extra_service', (req, res) => {
       return;
     }
 
-    const branchId = usersData.find((user) => user.id === data.patient_id)?.branch_id;
+    const branchId = data.branch_id;
     if (!branchId) {
       return;
     }
 
     const branchInfo = masterBranches.find((branch) => branch.id === branchId);
+    const user = userMap.get(data.patient_id);
 
     if (
       (!city || branchInfo.branch_city_id == city) &&
       (!state || branchInfo.branch_state_id == state)
     ) {
       if (!branchData[branchId]) {
-        branchData[branchId] = { total_extra_service_amount: 0.0, data: [] };
+        branchData[branchId] = { total_extra_service_amount: 0.0, data: {} };
       }
 
       const activityDate = new Date(data.created_at);
@@ -894,11 +897,28 @@ app.get('/staff_extra_service', (req, res) => {
         (!start || activityDate >= new Date(start)) &&
         (!end || activityDate <= new Date(end))
       ) {
-        branchData[branchId].total_extra_service_amount += parseFloat(data.extra_service_amount);
-        branchData[branchId].data.push({
-          branch: branchId,
+        const extraServiceId = data.extra_service_id;
+        const extraServiceAmount = parseFloat(data.extra_service_amount);
+        const extraService = extraServiceData[extraServiceId] || {}; 
+
+        if (!branchData[branchId].data[extraServiceId]) {
+          branchData[branchId].data[extraServiceId] = {
+            name: extraService.extra_service_name || 'N/A',
+            total_amount: 0.0,
+            users: [],
+          };
+        }
+
+        branchData[branchId].data[extraServiceId].total_amount += extraServiceAmount;
+        branchData[branchId].total_extra_service_amount += extraServiceAmount;
+
+        branchData[branchId].data[extraServiceId].users.push({
           patient_id: data.patient_id,
-          extra_service_amount: data.extra_service_amount,
+          first_name: user?.first_name || 'N/A',
+          last_name: user?.last_name || 'N/A',
+          extra_service_rate: data.extra_service_rate,
+          invoice_status: data.invoice_status,
+          payment_status: data.payment_status,
         });
       }
     }
@@ -941,6 +961,7 @@ app.get('/staff_extra_service', (req, res) => {
     res.json(response);
   });
 });
+
 
 app.get('/patient_activity_tax', (req, res) => {
   const { start, end, branch } = req.query;
@@ -1079,12 +1100,11 @@ app.get('/patient_schedules', (req, res) => {
     res.json(response);
   });
 
-  // Function to get data for the entire month
   function getMonthlyData(data) {
     const monthlyData = {};
     data.forEach((entry) => {
       const scheduleDate = new Date(entry.schedule_date);
-      const month = scheduleDate.getMonth() + 1; // Month is zero-based
+      const month = scheduleDate.getMonth() + 1; 
       const year = scheduleDate.getFullYear();
       const key = `${year}-${month}`;
       if (!monthlyData[key]) {
@@ -1094,7 +1114,6 @@ app.get('/patient_schedules', (req, res) => {
     return Object.values(monthlyData);
   }
 });
-
 
 app.get('/tester', (req, res) => {
   const { city, branch, state, start, end, membership_type, status, invoice_status } = req.query;
