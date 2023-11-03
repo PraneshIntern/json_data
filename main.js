@@ -13,7 +13,7 @@ const app = express();
 const port = 3000;
 
 const dbConfig = {
-  host: '162.241.85.121',
+  host: '162.241',
   user: 'athulslv_muthukumar',
   password: 'Athulya@123',
   database: 'athulslv_sal_subscriber102'
